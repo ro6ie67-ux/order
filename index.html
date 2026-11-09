@@ -102,6 +102,7 @@ h1{font-family:var(--display);font-style:italic;font-weight:900;text-transform:u
 .textto{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
 .textto .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .textto .v{font-family:var(--display);font-style:italic;font-weight:900;font-size:22px;user-select:all;flex:1}
+.btn.big{width:100%;padding:16px;font-size:18px;font-family:var(--display);font-style:italic;font-weight:900;text-transform:uppercase}
 footer.foot{font-size:13px;color:var(--muted);text-align:center}
 </style>
 
@@ -176,10 +177,15 @@ function field(id,label,{type="text",req=false,ph="",hint="",full=false}={}){
 const FILES = [];
 let INFRAME = true; try{ INFRAME = window.self !== window.top; }catch(_){ INFRAME = true; }
 const CAN_SHARE = !INFRAME && !!navigator.share;
+const CAN_SEND = !INFRAME;                 // direct send works on Will's own site, not inside Claude
+const SEND_TO = "Ro6ie67@gmail.com";       // orders arrive here via FormSubmit
+const SEND_CC = "";                        // optional: carrier email-to-text address for Will's phone
+const MAX_UP = 10*1024*1024;               // FormSubmit limit: 10 MB total per order
+const totalUp = ()=>FILES.reduce((a,f)=>a+f.size,0);
 const kb = n=> n>1048576 ? (n/1048576).toFixed(1)+" MB" : Math.max(1,Math.round(n/1024))+" KB";
 function upbox(){
-  return `<div class="f" data-f="up"><span class="lbl">Upload from your phone</span>
-    <label class="drop" for="up" id="dropzone"><b>Tap to add photos, videos or files</b><span>Pick from your camera roll or Files. You can add more than one.</span></label>
+  return `<div class="f" data-f="up"><span class="lbl">Upload from your phone · up to 10 MB total</span>
+    <label class="drop" for="up" id="dropzone"><b>Tap to add photos, videos or files</b><span>Photos, logos, short clips. Send big videos as a Dropbox or Drive link.</span></label>
     <input class="vh" type="file" id="up" multiple accept="image/*,video/*,audio/*,.pdf,.zip,.psd,.png,.jpg,.jpeg,.heic,.mov,.mp4,.wav,.mp3">
     ${FILES.length?`<div class="thumbs">${FILES.map((f,i)=>`<div class="thumb">${f.type.startsWith("image/")?`<img src="${f._url}" alt="">`:`<span class="ext">${esc((f.name.split(".").pop()||"file").toUpperCase())}</span>`}<div class="meta"><span>${esc(f.name)}</span><small>${kb(f.size)}</small></div><button class="btn sm ghost" data-unfile="${i}" aria-label="Remove ${esc(f.name)}">✕</button></div>`).join("")}</div>`:""}
     <span class="msg"></span></div>`;
@@ -305,6 +311,7 @@ function validate(){
   const f=String(val("files")).trim(); if(f && !/\S+\.\S+/.test(f)) errs.push(["files","That doesn't look like a link. Paste the full link."]);
   need("name","Add your name");
   need("phone","Add your phone number");
+  if(CAN_SEND && totalUp()>MAX_UP) errs.push(["up",`Your uploads are ${kb(totalUp())}. The limit is 10 MB, so remove big videos and paste a Dropbox or Drive link instead.`]);
   if(val("haslogo")==="yes") need("logolink","Add a link to your logo");
   document.querySelectorAll("[data-f]").forEach(el=>{ el.classList.remove("err"); const m=el.querySelector(".msg"); if(m) m.textContent=""; });
   errs.forEach(([id,msg])=>{ const el=document.querySelector(`[data-f="${id}"]`); if(el){ el.classList.add("err"); const m=el.querySelector(".msg"); if(m) m.textContent=msg; } });
@@ -317,17 +324,21 @@ function review(){
   const sms = `sms:${SMS_TO}?&body=${encodeURIComponent(t)}`;
   return `<div><button class="btn sm" id="back">← Edit</button></div>
   <div><h1>${consult?"Ask for an estimate":"Send your order"}</h1><p class="lede">${consult?"Text this to Will and he'll get back to you with a price.":"Text your order to Will. Your spot is locked in once he confirms and payment is in."}</p></div>
-  <section class="card review">
+  ${CAN_SEND?`<section class="card review">
+    <h2>Check your order<small>This is exactly what Will gets.</small></h2>
+    <pre class="summary" id="sum">${esc(t)}</pre>
+    ${FILES.length?`<span class="note">${FILES.length} file${FILES.length===1?"":"s"} attached (${kb(totalUp())})</span>`:""}
+    <button class="btn primary big" id="send">${consult?"Send request to Will":"Send order to Will"}</button>
+    <span class="note">Sends your order${FILES.length?" and files":""} straight to Will's email and phone. You'll see a confirmation next.</span>
+  </section>`:`<section class="card review">
     <h2>1. Text it to Will<small>${esc(PAY.apple)}</small></h2>
     <pre class="summary" id="sum">${esc(t)}</pre>
-    ${CAN_SHARE?`<div class="row"><button class="btn primary" id="share">${FILES.length?`Send order + ${FILES.length} file${FILES.length===1?"":"s"}`:"Send order"}</button><button class="btn" id="copy">Copy message</button><a class="btn" href="${esc(sms)}">Open Messages</a></div>`
-    :`<div class="row"><button class="btn primary" id="copy">Copy order</button></div>`}
+    <div class="row"><button class="btn primary" id="copy">Copy order</button></div>
     <div class="textto"><span class="k">Text it to</span><span class="v">${esc(PAY.apple)}</span><button class="btn sm" data-copy="${PAY.apple}">Copy number</button></div>
-    <span class="note">Your order only reaches Will when you send the text. ${CAN_SHARE?`Tap Send order, pick Messages, and send it to ${esc(PAY.apple)}.`:`Copy your order, open Messages, paste it in a text to ${esc(PAY.apple)} and hit send.${FILES.length?` Then attach the ${FILES.length} file${FILES.length===1?"":"s"} you picked to the same text.`:""}`}</span>
-    
+    <span class="note">Copy your order, open Messages, paste it in a text to ${esc(PAY.apple)} and hit send.${FILES.length?` Then attach the ${FILES.length} file${FILES.length===1?"":"s"} you picked to the same text.`:""}</span>
     <textarea id="fallback" hidden readonly style="width:100%;min-height:160px;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:10px;font-family:var(--mono);font-size:12.5px"></textarea>
-  </section>
-  ${consult?`<section class="card"><h2>2. Wait for your estimate<small>No payment yet. Will texts you a price and a plan.</small></h2></section>`:`
+  </section>`}
+  ${CAN_SEND?"":`  ${consult?`<section class="card"><h2>2. Wait for your estimate<small>No payment yet. Will texts you a price and a plan.</small></h2></section>`:`
   <section class="card">
     <h2>2. Pay<small>Estimate ${usd(estimate())}${s&&s.plus?"+":""}. Put your name and service in the payment note.</small></h2>
     <div class="paygrid">
@@ -335,12 +346,53 @@ function review(){
       <div class="payopt"><b>Cash App</b><span class="v">${esc(PAY.cashapp)}</span><div class="row"><a class="btn sm" href="https://cash.app/${encodeURIComponent(PAY.cashapp)}" target="_blank" rel="noopener">Open Cash App</a><button class="btn sm" data-copy="${esc(PAY.cashapp)}">Copy</button></div></div>
       <div class="payopt"><b>Apple Pay</b><span class="v">${esc(PAY.apple)}</span><span class="note">Send with Apple Cash in Messages to this number.</span><button class="btn sm" data-copy="${esc(PAY.apple)}">Copy number</button></div>
     </div>
-  </section>`}
+  </section>`}`}
   <footer class="foot">Ro6ie · ${CONTACT.ig} · ${esc(PAY.apple)}</footer>`;
+}
+function payBlock(est,plus){
+  return `<div class="paygrid">
+      <div class="payopt"><b>PayPal</b><a class="btn pay" href="${esc(PAY.paypal)}" target="_blank" rel="noopener">Pay with PayPal</a></div>
+      <div class="payopt"><b>Cash App</b><span class="v">${esc(PAY.cashapp)}</span><div class="row"><a class="btn sm" href="https://cash.app/${encodeURIComponent(PAY.cashapp)}" target="_blank" rel="noopener">Open Cash App</a><button class="btn sm" data-copy="${esc(PAY.cashapp)}">Copy</button></div></div>
+      <div class="payopt"><b>Apple Pay</b><span class="v">${esc(PAY.apple)}</span><span class="note">Send with Apple Cash in Messages to this number.</span><button class="btn sm" data-copy="${esc(PAY.apple)}">Copy number</button></div>
+    </div>`;
+}
+function sentView(q){
+  const consult = q.get("t")==="consult", est = Number(q.get("est"))||0, name = q.get("n")||"";
+  return `<img class="hero" src="${HERO}" alt="Ro6ie poster art">
+  <div><h1>${consult?"Request sent":"Order sent"}</h1><p class="lede">${name?esc(name)+", w":"W"}ill got your ${consult?"request":"order"} and will text you back${consult?" with an estimate":" to confirm"}.</p></div>
+  ${consult?`<section class="card"><h2>What's next<small>No payment yet. Will texts you a price and a plan.</small></h2></section>`:`
+  <section class="card"><h2>Pay to lock it in<small>${est?`Estimate ${usd(est)}. `:""}Put your name and service in the payment note.</small></h2>${payBlock()}</section>`}
+  <div><a class="btn" href="${location.pathname}">Start another order</a></div>
+  <footer class="foot">Ro6ie · ${CONTACT.ig} · ${esc(PAY.apple)}</footer>`;
+}
+function sendOrder(){
+  const t = orderText(), s = pick();
+  const F = document.createElement("form");
+  F.method="POST"; F.enctype="multipart/form-data"; F.acceptCharset="UTF-8";
+  F.action = "https://formsubmit.co/" + SEND_TO;
+  const add=(k,v)=>{ if(v===""||v==null) return; const i=document.createElement("input"); i.type="hidden"; i.name=k; i.value=v; F.appendChild(i); };
+  const T={vfx:"VFX",cover:"Cover art",book:"Booking",consult:"Estimate request"}[S.type];
+  add("_subject", `New Ro6ie ${T.toLowerCase()}: ${val("name")}${s?" · "+s.n:""}`);
+  add("_template","box"); add("_captcha","false");
+  if(SEND_CC) add("_cc", SEND_CC);
+  if(val("email")) add("_replyto", val("email"));
+  const next = new URL(location.href); next.hash=""; next.search="";
+  next.searchParams.set("sent","1"); next.searchParams.set("t",S.type); next.searchParams.set("est",String(estimate())); next.searchParams.set("n",val("name"));
+  add("_next", next.toString());
+  add("Type", T); add("Name", val("name")); add("Phone", val("phone")); add("Email", val("email")); add("Instagram", val("ig"));
+  add("Service", s?s.n:""); add("Estimate", S.type==="consult"?"Asking for estimate":usd(estimate())+(s&&s.plus?"+":""));
+  add("Full order", t);
+  let attached = 0;
+  FILES.forEach((f,i)=>{ try{ const dt=new DataTransfer(); dt.items.add(f); const inp=document.createElement("input"); inp.type="file"; inp.name="attachment"+(i+1); inp.files=dt.files; F.appendChild(inp); attached++; }catch(_){} });
+  if(FILES.length && attached<FILES.length) add("Note", "Some files couldn't attach from this browser. Ask the client to text them.");
+  F.style.display="none"; document.body.appendChild(F);
+  F.submit();
 }
 
 function render(){
   const app = $("#app");
+  const q = new URLSearchParams(location.search);
+  if(q.get("sent")==="1"){ app.innerHTML = sentView(q); $("#bar").hidden=true; return; }
   if(S.step==="review"){ app.innerHTML = review(); $("#bar").hidden=true; window.scrollTo(0,0); return; }
   $("#bar").hidden=false;
   app.innerHTML = `
@@ -391,6 +443,7 @@ document.addEventListener("click", async e=>{
     }
     return;
   }
+  if(b.id==="send"){ b.disabled=true; b.textContent="Sending…"; sendOrder(); return; }
   if(b.id==="go"){ if(validate()){ S.step="review"; render(); } return; }
   if(b.id==="back"){ S.step="form"; render(); return; }
   if(b.id==="copy" || b.dataset.copy){
