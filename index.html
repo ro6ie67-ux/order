@@ -68,6 +68,7 @@ h1{font-family:var(--display);font-style:italic;font-weight:900;text-transform:u
 .bar .l{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .bar .t{font-family:var(--display);font-style:italic;font-size:26px;font-weight:900;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
 .btn{border:1px solid var(--line);background:var(--surface);padding:12px 18px;border-radius:10px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+a.btn{color:var(--ink)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.pay{background:#FFC439;border-color:#FFC439;color:#111}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
@@ -103,6 +104,20 @@ h1{font-family:var(--display);font-style:italic;font-weight:900;text-transform:u
 .textto .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .textto .v{font-family:var(--display);font-style:italic;font-weight:900;font-size:22px;user-select:all;flex:1}
 .btn.big{width:100%;padding:16px;font-size:18px;font-family:var(--display);font-style:italic;font-weight:900;text-transform:uppercase}
+.totalbox{display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:2px solid var(--accent);border-radius:12px;padding:14px 16px;background:var(--accent-soft)}
+.totalbox .k,.sheet .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.totalbox .amt{font-family:var(--display);font-style:italic;font-weight:900;font-size:52px;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.paybtns{display:grid;grid-template-columns:1fr;gap:10px}
+.paybtns .btn{padding:16px;font-family:var(--display);font-style:italic;font-weight:900;text-transform:uppercase;font-size:18px}
+.cashbtn{background:#00D632;border-color:#00D632;color:#06210F}
+.applebtn{background:#FFFFFF;border-color:#FFFFFF;color:#111}
+.scrim{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:min(560px,100%);background:var(--surface);border:1px solid var(--line);border-radius:18px 18px 0 0;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding-top:22px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));padding-left:max(18px, env(safe-area-inset-left,0px));padding-right:max(18px, env(safe-area-inset-right,0px))}
+.bigamt{font-family:var(--display);font-style:italic;font-weight:900;font-size:clamp(64px,22vw,96px);line-height:1;color:var(--accent);letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.paysteps{text-align:left;margin:4px 0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:15px;align-self:stretch}
+.paysteps li::marker{color:var(--accent);font-weight:700}
+.sheet .btn.big{align-self:stretch}
+@media (prefers-reduced-motion:no-preference){.sheet{animation:up .22s ease-out}@keyframes up{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}}
 footer.foot{font-size:13px;color:var(--muted);text-align:center}
 </style>
 
@@ -329,7 +344,7 @@ function review(){
     <pre class="summary" id="sum">${esc(t)}</pre>
     ${FILES.length?`<span class="note">${FILES.length} file${FILES.length===1?"":"s"} attached (${kb(totalUp())})</span>`:""}
     <button class="btn primary big" id="send">${consult?"Send request to Will":"Send order to Will"}</button>
-    <span class="note">Sends your order${FILES.length?" and files":""} straight to Will's email and phone. You'll see a confirmation next.</span>
+    <span class="note">Emails your order${FILES.length?" and files":""} to Will, then opens a text to his phone with the details. You'll see your total next.</span>
   </section>`:`<section class="card review">
     <h2>1. Text it to Will<small>${esc(PAY.apple)}</small></h2>
     <pre class="summary" id="sum">${esc(t)}</pre>
@@ -356,14 +371,64 @@ function payBlock(est,plus){
       <div class="payopt"><b>Apple Pay</b><span class="v">${esc(PAY.apple)}</span><span class="note">Send with Apple Cash in Messages to this number.</span><button class="btn sm" data-copy="${esc(PAY.apple)}">Copy number</button></div>
     </div>`;
 }
+function smsAlert(){
+  const s = pick(), T={vfx:"VFX",cover:"COVER ART",book:"BOOKING",consult:"ESTIMATE REQUEST"}[S.type];
+  const L = [`NEW RO6IE ${T}`,
+    `${val("name")}${val("brand")?" ("+val("brand")+")":""} · ${val("phone")}`,
+    s?`${s.n}${S.type==="consult"?"":" · "+usd(estimate())+(s.plus?"+":"")}`:"",
+    S.type==="book"&&val("date")?`Date: ${fmtDate(val("date"))}${val("time")?" "+fmtTime(val("time")):""}`:"",
+    val("due")?`Due: ${fmtDate(val("due"))}`:"",
+    val("rush")?`RUSH ${val("rush")==="24"?"24 hrs":"72 hrs"}`:"",
+    val("files")?`Link: ${val("files")}`:"",
+    val("haslogo")==="yes"&&val("logolink")?`Logo: ${val("logolink")}`:"",
+    FILES.length?`${FILES.length} file${FILES.length===1?"":"s"} sent to your email`:"",
+    S.type==="consult"&&val("need")?`Needs: ${val("need").slice(0,160)}`:"",
+    "Full order + files in your email."];
+  return L.filter(Boolean).join("\n");
+}
+const smsHref = body => `sms:${SMS_TO}?&body=${encodeURIComponent(body)}`;
 function sentView(q){
-  const consult = q.get("t")==="consult", est = Number(q.get("est"))||0, name = q.get("n")||"";
+  const consult = q.get("t")==="consult", est = Number(q.get("est"))||0, plus = q.get("p")==="1", name = q.get("n")||"";
+  let body = ""; try{ body = sessionStorage.getItem("ro6ie_sms")||""; }catch(_){}
+  if(!body) body = `NEW RO6IE ORDER\n${name}\nFull order + files in your email.`;
   return `<img class="hero" src="${HERO}" alt="Ro6ie poster art">
-  <div><h1>${consult?"Request sent":"Order sent"}</h1><p class="lede">${name?esc(name)+", w":"W"}ill got your ${consult?"request":"order"} and will text you back${consult?" with an estimate":" to confirm"}.</p></div>
+  <div><h1>${consult?"Request sent":"Order sent"}</h1><p class="lede">${name?esc(name)+", y":"Y"}our ${consult?"request":"order"} and files went to Will's email. Send the text below so it hits his phone too.</p></div>
+  <section class="card alertcard">
+    <h2>Text Will<small>Your Messages app opens with the alert already written. Just hit send.</small></h2>
+    <a class="btn primary big" id="smsgo" href="${esc(smsHref(body))}">Send text to Will</a>
+  </section>
   ${consult?`<section class="card"><h2>What's next<small>No payment yet. Will texts you a price and a plan.</small></h2></section>`:`
-  <section class="card"><h2>Pay to lock it in<small>${est?`Estimate ${usd(est)}. `:""}Put your name and service in the payment note.</small></h2>${payBlock()}</section>`}
+  <section class="card">
+    <div class="totalbox"><span class="k">Your total</span><span class="amt">${usd(est)}${plus?"+":""}</span><span class="note">${plus?"Starting price. Will confirms the final amount.":"Includes rush fee if you picked one."}</span></div>
+    <h2>Pay to lock it in<small>Tap a method. It shows the exact amount to send.</small></h2>
+    <div class="paybtns">
+      <button class="btn pay paypick" data-pay="paypal">PayPal</button>
+      <button class="btn paypick cashbtn" data-pay="cashapp">Cash App</button>
+      <button class="btn paypick applebtn" data-pay="apple">Apple Pay</button>
+    </div>
+  </section>`}
   <div><a class="btn" href="${location.pathname}">Start another order</a></div>
-  <footer class="foot">Ro6ie · ${CONTACT.ig} · ${esc(PAY.apple)}</footer>`;
+  <footer class="foot">Ro6ie · ${CONTACT.ig} · ${esc(PAY.apple)}</footer>
+  <div id="paysheet"></div>`;
+}
+function paySheet(method){
+  const q = new URLSearchParams(location.search), est = Number(q.get("est"))||0, plus=q.get("p")==="1", name=q.get("n")||"";
+  const amt = usd(est), raw = String(Math.round(est));
+  const M = {
+    paypal:{t:"PayPal", go:"Open PayPal", href:PAY.paypal, steps:[`Type <b>${amt}</b> as the amount`, `In the note, write: <b>${esc(name||"your name")} · Ro6ie order</b>`, "Send it as Friends & Family if PayPal asks"]},
+    cashapp:{t:"Cash App", go:`Open Cash App · ${amt}`, href:`https://cash.app/${encodeURIComponent(PAY.cashapp)}/${raw}`, steps:[`Cash App opens to <b>${esc(PAY.cashapp)}</b> with <b>${amt}</b> filled in`, "Check the amount, then tap Pay", `In the note, write your name`]},
+    apple:{t:"Apple Pay", go:"Open Messages", href:`sms:${SMS_TO}?&body=${encodeURIComponent(`Apple Cash ${amt} for my Ro6ie order · ${name}`)}`, steps:[`Messages opens to Will at <b>${esc(PAY.apple)}</b>`, `Tap <b>+</b> (or the Apple Cash icon), choose <b>Apple Cash</b>`, `Enter <b>${amt}</b> and tap Send, then confirm with Face ID`]},
+  }[method];
+  $("#paysheet").innerHTML = `<div class="scrim" id="payscrim" role="dialog" aria-modal="true" aria-label="Pay with ${M.t}">
+    <div class="sheet">
+      <span class="k">Send exactly</span>
+      <div class="bigamt">${amt}${plus?"+":""}</div>
+      <span class="k">with ${M.t}</span>
+      <button class="btn sm" data-copy="${raw}">Copy amount</button>
+      <ol class="paysteps">${M.steps.map(x=>`<li>${x}</li>`).join("")}</ol>
+      <a class="btn primary big" href="${esc(M.href)}" ${method==="apple"?"":'target="_blank" rel="noopener"'}>${M.go}</a>
+      <button class="btn ghost" id="payclose">Back</button>
+    </div></div>`;
 }
 function sendOrder(){
   const t = orderText(), s = pick();
@@ -378,6 +443,8 @@ function sendOrder(){
   if(val("email")) add("_replyto", val("email"));
   const next = new URL(location.href); next.hash=""; next.search="";
   next.searchParams.set("sent","1"); next.searchParams.set("t",S.type); next.searchParams.set("est",String(estimate())); next.searchParams.set("n",val("name"));
+  if(s&&s.plus) next.searchParams.set("p","1");
+  try{ sessionStorage.setItem("ro6ie_sms", smsAlert()); sessionStorage.removeItem("ro6ie_sms_opened"); }catch(_){}
   add("_next", next.toString());
   add("Type", T); add("Name", val("name")); add("Phone", val("phone")); add("Email", val("email")); add("Instagram", val("ig"));
   add("Service", s?s.n:""); add("Estimate", S.type==="consult"?"Asking for estimate":usd(estimate())+(s&&s.plus?"+":""));
@@ -392,7 +459,10 @@ function sendOrder(){
 function render(){
   const app = $("#app");
   const q = new URLSearchParams(location.search);
-  if(q.get("sent")==="1"){ app.innerHTML = sentView(q); $("#bar").hidden=true; return; }
+  if(q.get("sent")==="1"){ app.innerHTML = sentView(q); $("#bar").hidden=true;
+    let done=false; try{ done = sessionStorage.getItem("ro6ie_sms_opened")==="1"; sessionStorage.setItem("ro6ie_sms_opened","1"); }catch(_){}
+    if(!done){ setTimeout(()=>{ const a=$("#smsgo"); if(a) location.href=a.getAttribute("href"); }, 700); }
+    return; }
   if(S.step==="review"){ app.innerHTML = review(); $("#bar").hidden=true; window.scrollTo(0,0); return; }
   $("#bar").hidden=false;
   app.innerHTML = `
@@ -423,6 +493,7 @@ document.addEventListener("change", e=>{
   if(t.type==="radio"){ S.v[t.name]=t.value; const f=t.closest("[data-f]"); f&&f.classList.remove("err"); updateTotal(); }
   if(t.id==="svc"||t.id==="haslogo"){ S.v[t.id]=t.value; render(); const el=$("#"+t.id); el&&el.focus(); }
 });
+document.addEventListener("click", e=>{ if(e.target.id==="payscrim") $("#paysheet").innerHTML=""; });
 document.addEventListener("click", async e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.type){ if(S.type!==b.dataset.type){ S.type=b.dataset.type; S.v.svc=""; S.v.filesok=false; } render(); return; }
@@ -443,6 +514,8 @@ document.addEventListener("click", async e=>{
     }
     return;
   }
+  if(b.dataset.pay){ paySheet(b.dataset.pay); return; }
+  if(b.id==="payclose"){ $("#paysheet").innerHTML=""; return; }
   if(b.id==="send"){ b.disabled=true; b.textContent="Sending…"; sendOrder(); return; }
   if(b.id==="go"){ if(validate()){ S.step="review"; render(); } return; }
   if(b.id==="back"){ S.step="form"; render(); return; }
